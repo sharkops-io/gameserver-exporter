@@ -31,21 +31,3 @@ tests:
       - eval_time: 11m
         alertname: GameServerDown
         exp_alerts: []
-
-  - interval: 1m
-    input_series:
-      - series: 'gameserver_scrape_collector_success{collector="palworld"}'
-        values: '0x30'
-    alert_rule_test:
-      - eval_time: 14m
-        alertname: GameServerExporterCollectFailing
-        exp_alerts: []
-      - eval_time: 16m
-        alertname: GameServerExporterCollectFailing
-        exp_alerts:
-          - exp_labels:
-              severity: warning
-              collector: palworld
-            exp_annotations:
-              summary: "gameserver-exporter collector palworld is failing"
-              description: "The palworld collector has failed for 15m, so its series are absent rather than down."

@@ -10,11 +10,14 @@ groups:
           summary: "Game server {{ $labels.name }} is down"
           description: "{{ $labels.game }} server \"{{ $labels.name }}\" has not answered its status query for 10m."
 
-      - alert: GameServerExporterCollectFailing
-        expr: gameserver_scrape_collector_success == 0
-        for: 15m
-        labels:
-          severity: warning
-        annotations:
-          summary: "gameserver-exporter collector {{ $labels.collector }} is failing"
-          description: "The {{ $labels.collector }} collector has failed for 15m, so its series are absent rather than down."
+      # There is deliberately no alert on gameserver_scrape_collector_success.
+      # Both Sources (internal/palworld and internal/satisfactory) swallow
+      # client errors on purpose and always return a nil-safe sample set with
+      # no error, so collector.go's success=0 branch is unreachable -- the
+      # gauge is structurally pinned to 1 and an alert on it can never fire.
+      # That swallowing is itself correct: returning an error would make the
+      # shared collector retract gameserver_up along with everything else,
+      # turning a down server into an ABSENT one instead of a DOWN one.
+      # Collector/exporter health is covered elsewhere instead: `up{job=
+      # "gameserver-exporter"}` for the process itself, and `gameserver_up`
+      # for each game server's reachability.

@@ -58,9 +58,12 @@ test:
 # promtool ...` — hence the entrypoint override so `script:` can call
 # `promtool` directly.
 #
-# examples/rules.yaml does not exist yet -- it ships in a later task of this
-# repo's build-out -- so this job is guarded to skip rather than fail the
-# pipeline red until that file lands. Remove the `rules:` block once it does.
+# examples/rules.yaml has shipped since this guard was written. The `exists:`
+# check is kept anyway, deliberately: it makes this job a no-op rather than a
+# red pipeline in a checkout that doesn't have the examples/ directory (e.g. a
+# shallow/sparse clone, or a future restructuring that moves it), instead of
+# hard-coding an assumption about repo layout into a stage every pipeline run
+# has to pass.
 rules:
   stage: rules
   image:

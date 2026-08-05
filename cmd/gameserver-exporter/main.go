@@ -48,8 +48,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle(cfg.TelemetryPath, metricsHandler(reg))
 	// Deliberately NO /healthz. A probe that collects would couple this pod's
-	// restarts to the NAS and NVR being reachable; a broken exporter should
-	// surface as a DOWN Prometheus target instead.
+	// restarts to the Palworld and Satisfactory servers being reachable; a
+	// broken exporter should surface as a DOWN Prometheus target instead.
 	slog.Info("listening", "address", cfg.ListenAddress, "path", cfg.TelemetryPath)
 	if err := http.ListenAndServe(cfg.ListenAddress, mux); err != nil {
 		slog.Error("http server", "err", err)

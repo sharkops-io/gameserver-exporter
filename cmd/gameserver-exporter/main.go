@@ -1,0 +1,133 @@
+// Command gameserver-exporter serves Prometheus metrics for Palworld and
+// Satisfactory dedicated servers.
+package main
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"gitlab.com/sharkops/exporters/exporter-common/collector"
+	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/config"
+	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/palworld"
+	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/satisfactory"
+)
+
+// version is overridden at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
+func main() {
+	cfg, err := config.Parse(os.Args[1:], os.Getenv)
+	if errors.Is(err, config.ErrHelpRequested) {
+		// kingpin already wrote the usage text; --help is success, not a
+		// configuration error, so this exits 0 like any conventional CLI.
+		os.Exit(0)
+	}
+	if err != nil {
+		// --log.level/--log.format live in the very config that failed to
+		// parse, so this one message necessarily goes out on the default handler.
+		slog.Error("configuration error", "err", err)
+		os.Exit(1)
+	}
+	slog.SetDefault(slog.New(cfg.LogHandler(os.Stderr)))
+
+	slog.Info("starting gameserver-exporter", "version", version)
+
+	reg, err := buildRegistry(cfg)
+	if err != nil {
+		slog.Error("startup", "err", err)
+		os.Exit(1)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle(cfg.TelemetryPath, metricsHandler(reg))
+	// Deliberately NO /healthz. A probe that collects would couple this pod's
+	// restarts to the NAS and NVR being reachable; a broken exporter should
+	// surface as a DOWN Prometheus target instead.
+	slog.Info("listening", "address", cfg.ListenAddress, "path", cfg.TelemetryPath)
+	if err := http.ListenAndServe(cfg.ListenAddress, mux); err != nil {
+		slog.Error("http server", "err", err)
+		os.Exit(1)
+	}
+}
+
+// buildRegistry wires the configured collectors onto a fresh registry. It is
+// split out of main, rather than inlined there, so the whole config → registry
+// → /metrics path is reachable from a test: that path is the only place all of
+// this exporter's seams meet, and it is where the ErrorHandling bug below went
+// unnoticed through five review rounds of per-package tests.
+func buildRegistry(cfg *config.Config) (*prometheus.Registry, error) {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	if cfg.PalworldEnabled {
+		client, err := palworld.New(palworld.Config{URL: cfg.PalworldURL, Password: cfg.PalworldPassword, Timeout: cfg.HTTPTimeout})
+		if err != nil {
+			return nil, fmt.Errorf("palworld client: %w", err)
+		}
+		reg.MustRegister(collector.NewWithLabels(
+			&palworld.Source{Client: client, Name: cfg.PalworldName},
+			cfg.Timeout, prometheus.Labels{"collector": "palworld"}))
+		slog.Info("palworld collector enabled", "url", cfg.PalworldURL, "name", cfg.PalworldName)
+	}
+
+	if cfg.SatisfactoryEnabled {
+		client, err := satisfactory.New(satisfactory.Config{
+			URL:                cfg.SatisfactoryURL,
+			Password:           cfg.SatisfactoryPassword,
+			Timeout:            cfg.HTTPTimeout,
+			InsecureSkipVerify: cfg.SatisfactoryInsecure,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("satisfactory client: %w", err)
+		}
+		reg.MustRegister(collector.NewWithLabels(
+			&satisfactory.Source{Client: client, Name: cfg.SatisfactoryName},
+			cfg.Timeout, prometheus.Labels{"collector": "satisfactory"}))
+		slog.Info("satisfactory collector enabled", "url", cfg.SatisfactoryURL, "name", cfg.SatisfactoryName,
+			"insecure_skip_verify", cfg.SatisfactoryInsecure)
+	}
+
+	if !cfg.PalworldEnabled && !cfg.SatisfactoryEnabled {
+		return nil, errors.New("no collectors enabled; set --palworld.url and/or --satisfactory.url")
+	}
+
+	return reg, nil
+}
+
+// metricsHandler serves reg at the telemetry path.
+//
+// ErrorHandling is ContinueOnError, and that is load-bearing rather than
+// stylistic. The zero value is HTTPErrorOnError, under which ANY error from a
+// single Gather — a duplicate series produced by one collector, or a panic
+// inside one collector, both of which the registry turns into a gather error
+// rather than a crash — is answered with HTTP 500 and an empty body. That
+// throws away every metric on the endpoint: the healthy device's entire
+// namespace, the Go and process series, and both _scrape_collector_success
+// gauges, so the very alerts meant to catch a broken collector go absent at
+// exactly the moment they are needed.
+//
+// ContinueOnError serves everything that gathered cleanly with HTTP 200 and
+// records the failure on promhttp_metric_handler_errors_total{cause="gathering"},
+// which is the honest shape: partial data plus a counter saying so. It is what
+// makes the isolation this exporter's design promises actually hold. Registry
+// is also set so that counter exists on this endpoint at all.
+//
+// InstrumentMetricHandler wraps the handler to also register
+// promhttp_metric_handler_requests_total (by HTTP status code) and
+// promhttp_metric_handler_requests_in_flight on reg — the scrape-request
+// counters that HandlerFor alone does not produce. It only wraps; it does not
+// change ErrorHandling, which stays ContinueOnError.
+func metricsHandler(reg *prometheus.Registry) http.Handler {
+	h := promhttp.HandlerFor(reg, promhttp.HandlerOpts{
+		Registry:      reg,
+		ErrorHandling: promhttp.ContinueOnError,
+	})
+	return promhttp.InstrumentMetricHandler(reg, h)
+}

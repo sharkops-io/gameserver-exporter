@@ -88,4 +88,27 @@ func TestInsecureSkipVerifyDefaultsOffAndFailsClosed(t *testing.T) {
 	if !cfg.SatisfactoryInsecure {
 		t.Error(`"true" should disable verification`)
 	}
+
+	// An EXPLICIT false must beat the environment. kingpin bool flags don't
+	// accept "--flag=false" (that's a parse error, "unexpected false" --
+	// verified directly against kingpin v2.4.0); the negation form
+	// "--no-<flag>" is the actual way to pass an explicit false on the
+	// command line.
+	cfg, err = Parse([]string{"--no-satisfactory.insecure-skip-verify"},
+		get(map[string]string{"SATISFACTORY_INSECURE_SKIP_VERIFY": "true"}))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if cfg.SatisfactoryInsecure {
+		t.Error("an explicit --no-satisfactory.insecure-skip-verify must beat the environment")
+	}
+
+	// And an explicit --flag=true still works with no env set.
+	cfg, err = Parse([]string{"--satisfactory.insecure-skip-verify"}, get(nil))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !cfg.SatisfactoryInsecure {
+		t.Error("an explicit --satisfactory.insecure-skip-verify should enable it")
+	}
 }

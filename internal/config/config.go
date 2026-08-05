@@ -112,8 +112,11 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 	// way to turn it off; this is strictly better than the behaviour it
 	// replaces. Verifying the server's cert properly (pinning its CA) is a
 	// reasonable future improvement and is not in scope here.
-	app.Flag("satisfactory.insecure-skip-verify", "Skip TLS verification for the Satisfactory server, whose certificate is self-signed.").
-		Default("false").BoolVar(&cfg.SatisfactoryInsecure)
+	var insecureSetByUser bool
+	insecureFlag := app.Flag("satisfactory.insecure-skip-verify",
+		"Skip TLS verification for the Satisfactory server, whose certificate is self-signed.").Default("false")
+	insecureFlag.IsSetByUser(&insecureSetByUser)
+	insecureFlag.BoolVar(&cfg.SatisfactoryInsecure)
 
 	if _, err := app.Parse(args); err != nil {
 		return nil, err
@@ -145,10 +148,17 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 	fallback(&cfg.SatisfactoryName, getenv("SATISFACTORY_NAME"))
 
 	// Bool env fallback needs its own helper -- `fallback` only handles
-	// strings, and a bool has no "empty" value to test. Only an explicit
-	// "true" turns verification off, so a typo fails closed (secure) rather
-	// than open.
-	if !cfg.SatisfactoryInsecure && strings.EqualFold(getenv("SATISFACTORY_INSECURE_SKIP_VERIFY"), "true") {
+	// strings, and a bool has no "empty" value to test.
+	//
+	// Gate on IsSetByUser, NOT on the value. BoolVar cannot distinguish "flag
+	// omitted" from "flag explicitly passed as =false" -- both leave the field
+	// at its zero value -- so testing `!cfg.SatisfactoryInsecure` lets the
+	// environment override an explicit
+	// `--satisfactory.insecure-skip-verify=false`. That breaks flags-beat-env
+	// AND fails OPEN. The same file already uses IsSetByUser for --help.
+	//
+	// Only an explicit "true" enables it, so a typo ("yes", "1") fails closed.
+	if !insecureSetByUser && strings.EqualFold(getenv("SATISFACTORY_INSECURE_SKIP_VERIFY"), "true") {
 		cfg.SatisfactoryInsecure = true
 	}
 

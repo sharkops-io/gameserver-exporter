@@ -21,7 +21,8 @@
   "uid": "gameservers",
   "timezone": "",
   "tags": [
-    "another-app"
+    "gameserver-exporter",
+    "mc-monitor"
   ],
   "time": {
     "from": "now-6h",

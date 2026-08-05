@@ -1,0 +1,51 @@
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'gameserver_up{game="satisfactory",name="Satisfactory"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 9m            # below for: 10m -- pins the debounce
+        alertname: GameServerDown
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: GameServerDown
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              game: satisfactory
+              name: Satisfactory
+            exp_annotations:
+              summary: "Game server Satisfactory is down"
+              description: "satisfactory server \"Satisfactory\" has not answered its status query for 10m."
+
+  - interval: 1m
+    input_series:
+      - series: 'gameserver_up{game="palworld",name="Palworld"}'
+        values: '1x20'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: GameServerDown
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'gameserver_scrape_collector_success{collector="palworld"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: GameServerExporterCollectFailing
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: GameServerExporterCollectFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              collector: palworld
+            exp_annotations:
+              summary: "gameserver-exporter collector palworld is failing"
+              description: "The palworld collector has failed for 15m, so its series are absent rather than down."

@@ -1,0 +1,20 @@
+groups:
+  - name: gameservers
+    rules:
+      - alert: GameServerDown
+        expr: gameserver_up == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Game server {{ $labels.name }} is down"
+          description: "{{ $labels.game }} server \"{{ $labels.name }}\" has not answered its status query for 10m."
+
+      - alert: GameServerExporterCollectFailing
+        expr: gameserver_scrape_collector_success == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "gameserver-exporter collector {{ $labels.collector }} is failing"
+          description: "The {{ $labels.collector }} collector has failed for 15m, so its series are absent rather than down."

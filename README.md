@@ -62,7 +62,7 @@ hostnames, passwords, or tokens to this (public) repository.
 
 A collector actually runs only when it is not explicitly disabled **and**
 has a URL configured — so both collectors can be left entirely unconfigured
-without passing `--collector.palworld=false` / `--collector.satisfactory=false`
+without passing `--no-collector.palworld` / `--no-collector.satisfactory`
 explicitly. If a URL is set, the matching password is required; the exporter
 refuses to start otherwise rather than starting up in a state that can never
 successfully scrape.
@@ -71,8 +71,16 @@ successfully scrape.
 environment fallback (`SATISFACTORY_INSECURE_SKIP_VERIFY`), and only the
 literal value `true` (case-insensitive) enables it — anything else, including
 a typo, is treated as `false`. An explicit flag always wins over the
-environment, even `--satisfactory.insecure-skip-verify=false` against a
+environment, even `--no-satisfactory.insecure-skip-verify` against a
 `true` environment variable.
+
+All of this exporter's boolean flags (`--collector.palworld`,
+`--collector.satisfactory`, `--satisfactory.insecure-skip-verify`) are
+kingpin bool flags: passing them alone means `true`, and the explicit-false
+form is `--no-<flag>`, **not** `--<flag>=false`. kingpin v2.4.0 rejects the
+latter outright with `unexpected false`, which surfaces as a configuration
+error and a non-zero exit — a CrashLoop under Kubernetes, not a silently
+ignored flag.
 
 Run `gameserver-exporter --help` for the same list generated straight from
 the binary.

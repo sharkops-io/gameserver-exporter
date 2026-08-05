@@ -80,19 +80,39 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 
 	app.Flag("web.listen-address", "Address to listen on.").Default(":9102").StringVar(&cfg.ListenAddress)
 	app.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").StringVar(&cfg.TelemetryPath)
-	app.Flag("collector.timeout", "Per-collector timeout for a whole scrape. Keep below Prometheus' scrape_timeout.").
-		Default("8s").DurationVar(&cfg.Timeout)
+
+	// collector.timeout, http.timeout, log.level and log.format all default to
+	// a non-empty/non-zero value, so (like
+	// --satisfactory.insecure-skip-verify below) a value-based "is this still
+	// the zero value" test can never tell "left at the compiled default"
+	// apart from "explicitly set to that same value" -- the field already
+	// holds a non-zero default before the environment is ever consulted. Each
+	// gets its own IsSetByUser gate for the same reason the bool flag does.
+	var timeoutSetByUser bool
+	timeoutFlag := app.Flag("collector.timeout", "Per-collector timeout for a whole scrape. Keep below Prometheus' scrape_timeout.").
+		Default("8s")
+	timeoutFlag.IsSetByUser(&timeoutSetByUser)
+	timeoutFlag.DurationVar(&cfg.Timeout)
+
 	// Two different clocks, and both have to be raised to give a slow server
 	// more time. --collector.timeout bounds a collector's whole scrape, while
 	// --http.timeout bounds each individual request against that server's API.
-	app.Flag("http.timeout", "Per-HTTP-request timeout. Raise this too when raising --collector.timeout.").
-		Default("3s").DurationVar(&cfg.HTTPTimeout)
+	var httpTimeoutSetByUser bool
+	httpTimeoutFlag := app.Flag("http.timeout", "Per-HTTP-request timeout. Raise this too when raising --collector.timeout.").
+		Default("3s")
+	httpTimeoutFlag.IsSetByUser(&httpTimeoutSetByUser)
+	httpTimeoutFlag.DurationVar(&cfg.HTTPTimeout)
 
 	var logLevel string
-	app.Flag("log.level", "Log level: debug, info, warn or error.").Default("info").
-		EnumVar(&logLevel, "debug", "info", "warn", "error")
-	app.Flag("log.format", "Log output format: logfmt or json.").Default("logfmt").
-		EnumVar(&cfg.LogFormat, "logfmt", "json")
+	var logLevelSetByUser bool
+	logLevelFlag := app.Flag("log.level", "Log level: debug, info, warn or error.").Default("info")
+	logLevelFlag.IsSetByUser(&logLevelSetByUser)
+	logLevelFlag.EnumVar(&logLevel, "debug", "info", "warn", "error")
+
+	var logFormatSetByUser bool
+	logFormatFlag := app.Flag("log.format", "Log output format: logfmt or json.").Default("logfmt")
+	logFormatFlag.IsSetByUser(&logFormatSetByUser)
+	logFormatFlag.EnumVar(&cfg.LogFormat, "logfmt", "json")
 
 	palOn := app.Flag("collector.palworld", "Enable the Palworld collector.").Default("true").Bool()
 	satOn := app.Flag("collector.satisfactory", "Enable the Satisfactory collector.").Default("true").Bool()
@@ -125,21 +145,11 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 		return nil, ErrHelpRequested
 	}
 
-	// EnumVar already rejected anything else, so this cannot fail silently
-	// into a wrong level.
-	switch logLevel {
-	case "debug":
-		cfg.LogLevel = slog.LevelDebug
-	case "warn":
-		cfg.LogLevel = slog.LevelWarn
-	case "error":
-		cfg.LogLevel = slog.LevelError
-	default:
-		cfg.LogLevel = slog.LevelInfo
-	}
-
-	// Environment fallback: applied only where the flag left the value empty,
-	// so a flag always wins.
+	// Environment fallback: applied only where the flag was left at its
+	// compiled default, so an explicit flag always wins. For these six,
+	// "not passed" and "" are the same thing, so testing the value is
+	// sufficient -- there is no separate IsSetByUser trap here because none
+	// of them has a non-empty default.
 	fallback(&cfg.PalworldURL, getenv("PALWORLD_URL"))
 	fallback(&cfg.PalworldPassword, getenv("PALWORLD_PASSWORD"))
 	fallback(&cfg.PalworldName, getenv("PALWORLD_NAME"))
@@ -162,6 +172,70 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 		cfg.SatisfactoryInsecure = true
 	}
 
+	// COLLECTOR_TIMEOUT / HTTP_TIMEOUT: gated on IsSetByUser (see the flag
+	// definitions above for why) rather than on value, since both flags
+	// default to a non-zero duration. A malformed value errors rather than
+	// silently keeping the compiled default, matching the flag's own
+	// behaviour -- kingpin would reject a malformed --collector.timeout the
+	// same way.
+	if !timeoutSetByUser {
+		if v := getenv("COLLECTOR_TIMEOUT"); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return nil, fmt.Errorf("COLLECTOR_TIMEOUT: %w", err)
+			}
+			cfg.Timeout = d
+		}
+	}
+	if !httpTimeoutSetByUser {
+		if v := getenv("HTTP_TIMEOUT"); v != "" {
+			d, err := time.ParseDuration(v)
+			if err != nil {
+				return nil, fmt.Errorf("HTTP_TIMEOUT: %w", err)
+			}
+			cfg.HTTPTimeout = d
+		}
+	}
+
+	// LOG_LEVEL / LOG_FORMAT: same IsSetByUser gating, applied to the raw
+	// string BEFORE it's validated below, so a value coming from the
+	// environment is held to the same enum EnumVar would have enforced on a
+	// flag.
+	if !logLevelSetByUser {
+		if v := getenv("LOG_LEVEL"); v != "" {
+			logLevel = v
+		}
+	}
+	if !logFormatSetByUser {
+		if v := getenv("LOG_FORMAT"); v != "" {
+			cfg.LogFormat = v
+		}
+	}
+
+	// A flag value has already been checked by EnumVar; a value that arrived
+	// via the environment has not, so this switch is the only thing
+	// enforcing the enum for LOG_LEVEL now that env can supply it. An
+	// unrecognised value errors rather than silently defaulting to info, so
+	// a typo can't quietly discard the level someone asked for.
+	switch logLevel {
+	case "debug":
+		cfg.LogLevel = slog.LevelDebug
+	case "info":
+		cfg.LogLevel = slog.LevelInfo
+	case "warn":
+		cfg.LogLevel = slog.LevelWarn
+	case "error":
+		cfg.LogLevel = slog.LevelError
+	default:
+		return nil, fmt.Errorf("LOG_LEVEL: invalid value %q, want debug, info, warn or error", logLevel)
+	}
+
+	// Same reasoning for LOG_FORMAT: EnumVar validated a flag value; a value
+	// from the environment needs the same check applied by hand.
+	if cfg.LogFormat != "logfmt" && cfg.LogFormat != "json" {
+		return nil, fmt.Errorf("LOG_FORMAT: invalid value %q, want logfmt or json", cfg.LogFormat)
+	}
+
 	// A collector runs when it is not disabled AND has somewhere to connect
 	// to, so either half can be left unconfigured without a flag.
 	cfg.PalworldEnabled = *palOn && cfg.PalworldURL != ""
@@ -172,6 +246,17 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 	}
 	if cfg.SatisfactoryEnabled && cfg.SatisfactoryPassword == "" {
 		return nil, fmt.Errorf("satisfactory.url is set but satisfactory.password is empty")
+	}
+	// The `name` label is load-bearing: it (together with `game`) is what
+	// keeps a server's series identity stable across restarts and what a
+	// dashboard's legend renders. An empty value doesn't error at the
+	// Prometheus client library level -- it just emits name="" and renders a
+	// blank legend entry -- so it has to be caught here instead.
+	if cfg.PalworldEnabled && cfg.PalworldName == "" {
+		return nil, fmt.Errorf("palworld.url is set but palworld.name is empty")
+	}
+	if cfg.SatisfactoryEnabled && cfg.SatisfactoryName == "" {
+		return nil, fmt.Errorf("satisfactory.url is set but satisfactory.name is empty")
 	}
 	if !cfg.PalworldEnabled && !cfg.SatisfactoryEnabled {
 		return nil, errors.New("no collectors enabled; set --palworld.url and/or --satisfactory.url")

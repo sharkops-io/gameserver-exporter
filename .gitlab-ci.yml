@@ -1,0 +1,67 @@
+include:
+  - project: 'sharkops/gitlab-ci-common-config'
+    ref: master
+    file: 'docker/build.yml'
+  # PUBLIC repo: a secret committed here is public the instant it's pushed,
+  # and deleting it from the working tree does not remove it from history.
+  - project: 'sharkops/gitlab-ci-common-config'
+    ref: master
+    file: 'security/secret-scan.yml'
+
+# The included templates' jobs (build, build_release, secret-scan) supply no
+# `stages:` list of their own, so this project must declare one that includes
+# every stage any included or local job uses.
+stages: [test, rules, build]
+
+variables:
+  GO_VERSION: "1.26"
+  # docker/build.yml (sharkops/gitlab-ci-common-config) builds with Kaniko —
+  # no Docker-in-Docker. It is single-arch: whatever platform the Kaniko
+  # executor itself runs on (amd64 on this org's shared runners). The
+  # target cluster is amd64-only, so this is an accepted trade.
+  REGISTRY_URL: $CI_REGISTRY
+  REGISTRY_USER: $CI_REGISTRY_USER
+  REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD
+  IMAGE_NAME: $CI_REGISTRY_IMAGE
+
+# Pinned, not :latest. golangci-lint refuses to run when the Go version it was
+# built with is older than the one go.mod targets, so :latest turns a routine
+# upstream release into a red pipeline on an unchanged commit — and, the other
+# way round, silently changes the enabled linter set under you. The linter set
+# itself lives in .golangci.yml so this image and a contributor's local run
+# agree. Bump this tag together with GO_VERSION and go.mod's `go` directive.
+lint:
+  stage: test
+  image: golangci/golangci-lint:v2.12.0
+  script:
+    - golangci-lint run --timeout 5m
+
+test:
+  stage: test
+  image: golang:${GO_VERSION}
+  script:
+    - go test ./... -race -count=1
+
+# promtool runs against the shipped example rules. This needs no cluster:
+# `promtool test rules` synthesises its own series.
+#
+# prom/prometheus's default ENTRYPOINT is the `prometheus` binary itself,
+# which rejects `promtool` as an unknown argument if invoked as `prometheus
+# promtool ...` — hence the entrypoint override so `script:` can call
+# `promtool` directly.
+#
+# examples/rules.yaml does not exist yet -- it ships in a later task of this
+# repo's build-out -- so this job is guarded to skip rather than fail the
+# pipeline red until that file lands. Remove the `rules:` block once it does.
+rules:
+  stage: rules
+  image:
+    name: prom/prometheus:latest
+    entrypoint: [""]
+  rules:
+    - exists:
+        - examples/rules.yaml
+  script:
+    - cd examples
+    - promtool check rules rules.yaml
+    - promtool test rules rules_test.yaml

@@ -46,10 +46,10 @@ hostnames, passwords, or tokens to this (public) repository.
 |---|---|---|---|
 | `--web.listen-address` | — | `:9102` | Address to listen on. |
 | `--web.telemetry-path` | — | `/metrics` | Path under which to expose metrics. |
-| `--collector.timeout` | — | `8s` | Per-collector timeout for a whole scrape. Keep below Prometheus' `scrape_timeout`. |
-| `--http.timeout` | — | `3s` | Per-HTTP-request timeout. **Raise this too when raising `--collector.timeout`** — see below. |
-| `--log.level` | — | `info` | `debug`, `info`, `warn` or `error`. |
-| `--log.format` | — | `logfmt` | `logfmt` or `json`. |
+| `--collector.timeout` | `COLLECTOR_TIMEOUT` | `8s` | Per-collector timeout for a whole scrape. Keep below Prometheus' `scrape_timeout`. |
+| `--http.timeout` | `HTTP_TIMEOUT` | `2s` | Per-HTTP-request timeout. **Raise this too when raising `--collector.timeout`** — see below. |
+| `--log.level` | `LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
+| `--log.format` | `LOG_FORMAT` | `logfmt` | `logfmt` or `json`. |
 | `--collector.palworld` | — | `true` | Enable the Palworld collector. |
 | `--collector.satisfactory` | — | `true` | Enable the Satisfactory collector. |
 | `--palworld.url` | `PALWORLD_URL` | — | Palworld REST API base URL, e.g. `http://<host>:8212`. |
@@ -121,6 +121,18 @@ every request is still cut off at `--http.timeout`. Raise both.
 `--collector.timeout` should comfortably exceed `--http.timeout` × the
 number of requests a scrape makes, or the collector deadline will fire
 mid-sequence and the extra per-request headroom is unreachable.
+
+Concretely, at the defaults: Palworld's worst case is 2 requests and
+Satisfactory's is **3** — `QueryServerState`, then `PasswordLogin` after a
+401/403, then `QueryServerState` again. That third request is not an edge
+case. The client performs no network I/O at construction, so its token starts
+empty and **every cold start pays the full three**, on the first scrape after
+each restart. 3 × `2s` = 6s, inside the `8s` collector budget; at `3s` it
+would be 9s and the deadline would fire mid-sequence, reporting
+`gameserver_up 0` for a server that is actually fine.
+
+If you raise `--http.timeout`, raise `--collector.timeout` to at least
+3 × the new value.
 
 ### There is deliberately no `/healthz` endpoint
 

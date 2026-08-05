@@ -97,9 +97,20 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 	// Two different clocks, and both have to be raised to give a slow server
 	// more time. --collector.timeout bounds a collector's whole scrape, while
 	// --http.timeout bounds each individual request against that server's API.
+	//
+	// 2s, not 3s, and the relationship to --collector.timeout is what fixes it.
+	// The Satisfactory collector's worst case is THREE sequential requests, not
+	// two: State() issues QueryServerState with whatever token it has cached,
+	// and on 401/403 logs in and retries -- query, login, query. That path is
+	// not exceptional, because New() performs no network I/O, so the token
+	// starts empty and every cold start pays it on the first scrape after a
+	// pod roll. 3 x 3s = 9s would blow the 8s collector budget; 3 x 2s = 6s
+	// fits inside it. Getting this wrong costs a false gameserver_up 0 on the
+	// first scrape or two after every restart -- absorbed by the alert's
+	// for: 10m, so no page, but it dents Uptime% for no reason.
 	var httpTimeoutSetByUser bool
 	httpTimeoutFlag := app.Flag("http.timeout", "Per-HTTP-request timeout. Raise this too when raising --collector.timeout.").
-		Default("3s")
+		Default("2s")
 	httpTimeoutFlag.IsSetByUser(&httpTimeoutSetByUser)
 	httpTimeoutFlag.DurationVar(&cfg.HTTPTimeout)
 

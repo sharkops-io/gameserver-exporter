@@ -177,13 +177,34 @@ the series identity across a restart.
 
 The Satisfactory deployment this exporter is built for runs with AUTOPAUSE
 enabled: whenever no players are connected, the server pauses its own
-simulation. While paused, both `gameserver_uptime_seconds` (which is
-**game-simulation time**, not wall-clock time — it is not "seconds since the
-process started") and `gameserver_fps` stop advancing entirely. Without a
-separate signal, a paused-but-healthy server looks identical to a hung
-exporter or a stuck game process: two flat lines. `gameserver_paused` exists
-specifically to distinguish "the server is fine and just idle" from "this
-metric stopped updating because something is broken."
+simulation. While paused, `gameserver_uptime_seconds` — which is
+**game-simulation time**, not wall-clock time; it is not "seconds since the
+process started" — stops advancing entirely. Without a separate signal, a
+paused-but-healthy server looks identical to a hung exporter or a stuck game
+process: a flat line. `gameserver_paused` exists specifically to distinguish
+"the server is fine and just idle" from "this metric stopped updating because
+something is broken."
+
+**`gameserver_fps` does NOT freeze**, despite what you might expect and what
+earlier drafts of this section claimed. Measured over 151 consecutive scrapes
+(30s apart, 75 minutes) with `gameserver_paused == 1` and zero players
+connected:
+
+| Metric | Behaviour while paused |
+|---|---|
+| `gameserver_uptime_seconds` | **904160 exactly, all 151 samples** — one distinct value, perfectly flat |
+| `gameserver_fps` | **25.80 – 28.99**, mean 27.97, σ 0.70 — 151 distinct values, still ticking |
+| `gameserver_paused` | `1` throughout |
+| `gameserver_up` | `1` throughout |
+
+The server keeps running its loop at roughly 28 ticks/second while paused; it
+just stops advancing *game time*. So a flat `gameserver_fps` is **not** the
+normal idle signature — if fps goes flat as well, that is a genuinely stuck
+process, not AUTOPAUSE.
+
+Palworld's deployment sets `AUTO_PAUSE_ENABLED: false`, so its
+`gameserver_uptime_seconds` is real wall-clock time: measured over the same
+window it advanced 4500s in 4530s of wall clock.
 
 ## Building
 

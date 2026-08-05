@@ -1,28 +1,23 @@
+# The container build is added in the task that creates
+# cmd/gameserver-exporter/main.go. Kaniko builds that package, so including
+# docker/build.yml before it exists leaves `build` permanently red -- and a
+# pipeline that is already red cannot signal that a NEW change broke
+# something. A `rules: exists:` guard is not an option here: the included
+# template's jobs use `except:`, and GitLab rejects mixing the two.
 include:
-  - project: 'sharkops/gitlab-ci-common-config'
-    ref: master
-    file: 'docker/build.yml'
   # PUBLIC repo: a secret committed here is public the instant it's pushed,
   # and deleting it from the working tree does not remove it from history.
   - project: 'sharkops/gitlab-ci-common-config'
     ref: master
     file: 'security/secret-scan.yml'
 
-# The included templates' jobs (build, build_release, secret-scan) supply no
-# `stages:` list of their own, so this project must declare one that includes
-# every stage any included or local job uses.
-stages: [test, rules, build]
+# The included template's job (secret-scan) supplies no `stages:` list of its
+# own, so this project must declare one that includes every stage any
+# included or local job uses.
+stages: [test, rules]
 
 variables:
   GO_VERSION: "1.26"
-  # docker/build.yml (sharkops/gitlab-ci-common-config) builds with Kaniko —
-  # no Docker-in-Docker. It is single-arch: whatever platform the Kaniko
-  # executor itself runs on (amd64 on this org's shared runners). The
-  # target cluster is amd64-only, so this is an accepted trade.
-  REGISTRY_URL: $CI_REGISTRY
-  REGISTRY_USER: $CI_REGISTRY_USER
-  REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD
-  IMAGE_NAME: $CI_REGISTRY_IMAGE
 
 # Pinned, not :latest. golangci-lint refuses to run when the Go version it was
 # built with is older than the one go.mod targets, so :latest turns a routine

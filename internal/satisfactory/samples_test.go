@@ -3,7 +3,7 @@ package satisfactory
 import (
 	"testing"
 
-	"gitlab.com/sharkops/exporters/exporter-common/metric"
+	"github.com/sharkops-io/exporter-common/metric"
 )
 
 func TestSamplesDownEmitsOnlyUp(t *testing.T) {

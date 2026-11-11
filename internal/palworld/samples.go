@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"gitlab.com/sharkops/exporters/exporter-common/collector"
-	"gitlab.com/sharkops/exporters/exporter-common/metric"
+	"github.com/sharkops-io/exporter-common/collector"
+	"github.com/sharkops-io/exporter-common/metric"
 )
 
 // Source adapts a Client to collector.Source, emitting the house

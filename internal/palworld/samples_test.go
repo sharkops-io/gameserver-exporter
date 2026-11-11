@@ -3,7 +3,7 @@ package palworld
 import (
 	"testing"
 
-	"gitlab.com/sharkops/exporters/exporter-common/metric"
+	"github.com/sharkops-io/exporter-common/metric"
 )
 
 func TestSamplesUp(t *testing.T) {

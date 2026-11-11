@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab.com/sharkops/exporters/exporter-common/httpx"
+	"github.com/sharkops-io/exporter-common/httpx"
 )
 
 // Config configures a Client.

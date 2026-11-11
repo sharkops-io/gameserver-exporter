@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"gitlab.com/sharkops/exporters/exporter-common/collector"
-	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/config"
-	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/palworld"
-	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/satisfactory"
+	"github.com/sharkops-io/exporter-common/collector"
+	"github.com/sharkops-io/gameserver-exporter/internal/config"
+	"github.com/sharkops-io/gameserver-exporter/internal/palworld"
+	"github.com/sharkops-io/gameserver-exporter/internal/satisfactory"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=...".

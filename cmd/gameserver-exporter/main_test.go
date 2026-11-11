@@ -9,7 +9,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
-	"gitlab.com/sharkops/exporters/gameserver-exporter/internal/config"
+	"github.com/sharkops-io/gameserver-exporter/internal/config"
 )
 
 func TestBuildRegistryEmitsBothCollectorsSelfMonitoring(t *testing.T) {

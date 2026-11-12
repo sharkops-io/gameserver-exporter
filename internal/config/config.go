@@ -136,13 +136,13 @@ func Parse(args []string, getenv func(string) string) (*Config, error) {
 	app.Flag("satisfactory.password", "Satisfactory CLIENT password. Not the admin password.").StringVar(&cfg.SatisfactoryPassword)
 	app.Flag("satisfactory.name", "Value of the `name` label for this Satisfactory server.").StringVar(&cfg.SatisfactoryName)
 	// Defaults to FALSE, deliberately. The Satisfactory server does present a
-	// self-signed cert, so this must be turned on for our deployment -- but it
-	// is turned on in the values file, where it is visible in review, rather
-	// than defaulted here where it would be an insecure default wearing a
-	// flag's clothing. another-app hardcodes InsecureSkipVerify: true with no
-	// way to turn it off; this is strictly better than the behaviour it
-	// replaces. Verifying the server's cert properly (pinning its CA) is a
-	// reasonable future improvement and is not in scope here.
+	// self-signed cert, so most deployments will need this turned on -- but
+	// that belongs in the deployment config, where it is visible in review,
+	// rather than defaulted here where it would be an insecure default wearing
+	// a flag's clothing. The earlier client this replaces hardcoded
+	// InsecureSkipVerify: true with no way to turn it off; this is strictly
+	// better than that. Verifying the server's cert properly (pinning its CA)
+	// is a reasonable future improvement and is not in scope here.
 	var insecureSetByUser bool
 	insecureFlag := app.Flag("satisfactory.insecure-skip-verify",
 		"Skip TLS verification for the Satisfactory server, whose certificate is self-signed.").Default("false")

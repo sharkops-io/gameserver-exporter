@@ -11,10 +11,9 @@ rather than inventing its own. A separate exporter, `mc-monitor`
 ([itzg/mc-monitor](https://github.com/itzg/mc-monitor)), covers Minecraft —
 it speaks the native Minecraft server-list-ping protocol and is not part of
 this repo. Its output is relabelled into this same `gameserver_*` schema at
-scrape time via the `serviceMonitor.endpoints[].metricRelabelings` block in
-`monitoring/mc-monitor-values.yaml`, so dashboards and alerts written against
-`gameserver_*` work identically whether the underlying server is Palworld,
-Satisfactory, or Minecraft.
+scrape time via `metricRelabelings` on mc-monitor's ServiceMonitor, so
+dashboards and alerts written against `gameserver_*` work identically
+whether the underlying server is Palworld, Satisfactory, or Minecraft.
 
 ## Quick start
 
